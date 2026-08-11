@@ -85,15 +85,16 @@ Use the output:
 
 - `chrome running` FAIL: ask the user to open Chrome, or use isolated/cloud browser.
 - `daemon alive` FAIL: Chrome remote debugging permission is missing, Chrome is closed, or the CDP endpoint is not reachable.
-- update available: run `browser-harness --update -y` when you decide to upgrade.
+- update available: `--update` is disabled in this fork; reinstall from the local source when you decide to upgrade.
 
 If this still fails, inspect `src/browser_harness/admin.py`, `src/browser_harness/daemon.py`, and `src/browser_harness/_ipc.py`.
 
 Useful:
 
 ```bash
-browser-harness --update -y
-browser-harness telemetry disable
+browser-harness --doctor
 ```
 
-State lives under `${XDG_CONFIG_HOME:-~/.config}/browser-harness` by default: auth, telemetry id, agent workspace, runtime sockets, logs, screenshots, and temp files. Override with `BH_HOME` or `BROWSER_HARNESS_HOME`.
+Telemetry has been removed from this fork at the code level; nothing is ever sent and there is nothing to opt out of.
+
+State lives under `${XDG_CONFIG_HOME:-~/.config}/browser-harness` by default: auth, agent workspace, runtime sockets, logs, screenshots, and temp files. Override with `BH_HOME` or `BROWSER_HARNESS_HOME`.

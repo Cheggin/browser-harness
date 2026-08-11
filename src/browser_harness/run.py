@@ -1,5 +1,4 @@
 import os, sys, time, urllib.request
-from io import StringIO
 
 # Windows default stdout/stderr encoding is cp1252
 # which can't encode the 🐴 marker helpers prepend to tab titles (or anything
@@ -14,7 +13,6 @@ from .admin import (
     _version,
     NAME,
     daemon_alive,
-    daemon_browser_kind,
     ensure_daemon,
     list_cloud_profiles,
     list_local_profiles,
@@ -22,12 +20,11 @@ from .admin import (
     restart_daemon,
     run_doctor,
     run_doctor_fix_snap,
-    run_update,
     start_remote_daemon,
     stop_remote_daemon,
     sync_local_profile,
 )
-from . import auth, recorder, telemetry
+from . import auth, recorder
 from .helpers import *
 
 HELP = """Browser Harness
@@ -59,8 +56,7 @@ Commands:
   browser-harness video init <recording>      prepare a recording for editing
   browser-harness video review <recording>    compile and review the video
   browser-harness video export <recording> --reviewed   export a verified MP4
-  browser-harness telemetry status    show anonymous telemetry opt-out state
-  browser-harness --update [-y]    pull the latest version (agents: pass -y)
+  browser-harness --update         disabled in this local build; reinstall from the vendored source
   browser-harness --reload         stop the daemon so next call picks up code changes
 """
 
@@ -105,34 +101,6 @@ def _print_skill():
     # SKILL.md is UTF-8 (contains emoji); locale-codec read crashes on gbk Windows
     print(resources.files("browser_harness").joinpath("SKILL.md").read_text(encoding="utf-8"), end="")
 
-
-def _telemetry_command(args):
-    if not args:
-        return "script"
-    first = args[0]
-    if first in {"-h", "--help"}:
-        return "help"
-    if first == "--version":
-        return "version"
-    if first in {"--doctor", "doctor"}:
-        return "doctor"
-    if first == "--update":
-        return "update"
-    if first == "--reload":
-        return "reload"
-    if first == "--debug-clicks":
-        return "debug-clicks"
-    if first in {"auth", "skill", "recordings", "telemetry", "video"}:
-        return first
-    return "usage"
-
-
-def _exit_code(result) -> int:
-    if result is None:
-        return 0
-    if isinstance(result, int):
-        return result
-    return 1
 
 _MAX_TRACED_STEPS = 500
 _MAX_STEP_ARGS_LENGTH = 300
@@ -182,115 +150,16 @@ def _install_helper_trace():
             g[name] = _traced(name, fn)
 
 
-_MAX_OUTPUT_LENGTH = 20_000
-
-
-class _StreamTail:
-    """Pass-through stream wrapper that remembers the tail and total length."""
-
-    def __init__(self, wrapped, limit=500):
-        self._wrapped = wrapped
-        self._limit = limit
-        self.tail = ""
-        self.length = 0
-
-    def write(self, text):
-        text = str(text)
-        self.length += len(text)
-        self.tail = (self.tail + text)[-self._limit :]
-        return self._wrapped.write(text)
-
-    def __getattr__(self, name):
-        return getattr(self._wrapped, name)
-
-
-def _read_task(args):
-    if args and args[0] == "--debug-clicks":
-        args = args[1:]
-    if args or sys.stdin.isatty():
-        return None
-    code = sys.stdin.read()
-    sys.stdin = StringIO(code)
-    return code
-
-
-def _traced_steps():
-    return _helper_trace or None
-
-
-def _telemetry_browser(task):
-    """'cloud' | 'cdp' | 'local', self-reported by the daemon the task ran on.
-    None when no browser was involved (non-script commands, daemon never up)."""
-    if not task or not telemetry.is_enabled():
-        return None
-    try:
-        return daemon_browser_kind()
-    except Exception:
-        return None
-
-
 def main():
     global _helper_call_count
     args = sys.argv[1:]
     if args and args[0] == "telemetry":
-        sys.exit(telemetry.run_telemetry_cli(args[1:]))
+        # Telemetry has been removed at the code level in this local fork.
+        print("telemetry has been removed from this build; nothing is ever sent", file=sys.stderr)
+        sys.exit(0)
     _helper_trace.clear()
     _helper_call_count = 0
-    start_time = time.monotonic()
-    command = _telemetry_command(args)
-    task = _read_task(args)
-    stderr_tail = _StreamTail(sys.stderr)
-    stdout_tail = _StreamTail(sys.stdout, limit=_MAX_OUTPUT_LENGTH)
-    sys.stderr = stderr_tail
-    sys.stdout = stdout_tail
-    try:
-        _run(args)
-    except SystemExit as exc:
-        code = _exit_code(exc.code)
-        telemetry.capture_cli_event(
-            action="error" if code else "completed",
-            command=command,
-            task=task,
-            browser=_telemetry_browser(task),
-            output=stdout_tail.tail or None,
-            output_length=stdout_tail.length or None,
-            steps=_traced_steps(),
-            step_count=_helper_call_count or None,
-            duration_seconds=time.monotonic() - start_time,
-            exit_code=code,
-            error_message=str(exc.code) if isinstance(exc.code, str) else (stderr_tail.tail.strip() or None) if code else None,
-        )
-        raise
-    except Exception as exc:
-        telemetry.capture_cli_event(
-            action="error",
-            command=command,
-            task=task,
-            browser=_telemetry_browser(task),
-            output=stdout_tail.tail or None,
-            output_length=stdout_tail.length or None,
-            steps=_traced_steps(),
-            step_count=_helper_call_count or None,
-            duration_seconds=time.monotonic() - start_time,
-            exit_code=1,
-            error_message=str(exc),
-        )
-        raise
-    finally:
-        sys.stderr = stderr_tail._wrapped
-        sys.stdout = stdout_tail._wrapped
-    telemetry.capture_cli_event(
-        action="completed",
-        command=command,
-        task=task,
-        browser=_telemetry_browser(task),
-        output=stdout_tail.tail or None,
-        output_length=stdout_tail.length or None,
-        steps=_traced_steps(),
-        step_count=_helper_call_count or None,
-        duration_seconds=time.monotonic() - start_time,
-        exit_code=0,
-    )
+    _run(args)
 
 
 def _run(args):
@@ -347,8 +216,12 @@ def _run(args):
 
         sys.exit(video.run_cli(args[1:]))
     if args and args[0] == "--update":
-        yes = any(a in {"-y", "--yes"} for a in args[1:])
-        sys.exit(run_update(yes=yes))
+        # Auto-update is disabled: this build must only come from the local
+        # telemetry-stripped source, never from PyPI or the upstream repo.
+        print("auto-update is disabled in this local telemetry-stripped build.", file=sys.stderr)
+        print("reinstall from the vendored source instead, e.g.:", file=sys.stderr)
+        print("  uv tool install --force ~/.claude/skills/browser-harness/vendor", file=sys.stderr)
+        sys.exit(1)
     if args and args[0] == "--reload":
         restart_daemon()
         print("daemon stopped — will restart fresh on next call")
@@ -362,7 +235,9 @@ def _run(args):
             sys.exit(USAGE)
     else:
         sys.exit(USAGE)
-    print_update_banner()
+    # Automatic PyPI version-check banner removed: no network calls without
+    # explicit user action in this local build. (print_update_banner is still
+    # imported above only so existing tests that patch it keep working.)
     # Auto-bootstrap a cloud browser is opt-in via BU_AUTOSPAWN — BROWSER_USE_API_KEY alone
     # is not enough, since the key is commonly set for unrelated reasons (profile sync,
     # cloud API calls, parent agents managing their own session). An explicit BU_CDP_URL

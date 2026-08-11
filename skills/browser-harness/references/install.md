@@ -49,6 +49,6 @@ If the quick path fails after `--doctor`, inspect `src/browser_harness/admin.py`
 
 ## Keeping current
 
-`browser-harness` prints an update banner when a newer PyPI release exists; run `browser-harness --update -y` when you decide to upgrade. `browser-harness --doctor` also checks the latest version. Telemetry is anonymous and opt-out with `browser-harness telemetry disable`.
+The automatic update banner and `--update` are disabled in this fork; reinstall from the local source when you decide to upgrade. `browser-harness --doctor` still checks the latest released version when you run it explicitly. Telemetry has been removed at the code level; nothing is ever sent.
 
 State lives under `${XDG_CONFIG_HOME:-~/.config}/browser-harness` by default: auth, agent workspace, runtime sockets, logs, screenshots, and temp files. Override with `BH_HOME` or `BROWSER_HARNESS_HOME`.
